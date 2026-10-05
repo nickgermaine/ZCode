@@ -20,7 +20,24 @@ import pkg, { CancellationToken } from "electron-updater";
 import semver from "semver";
 import { logger } from "./logger.js";
 import { getElectronReleasePlatform, ManifestUpdateProvider } from "./manifestUpdateProvider.js";
-const { autoUpdater } = pkg;
+
+type ElectronAutoUpdater = typeof pkg.autoUpdater;
+
+/**
+ * electron-updater 的 `autoUpdater` 是惰性 getter：首次读取时才按平台构造 updater，
+ * 构造函数会用 semver 校验 app.getVersion()。
+ *
+ * 之前在模块顶层 `const { autoUpdater } = pkg` 解构，导入本文件即触发构造。
+ * Linux 开发态 desktop/package.json 没有 version 字段（版本由打包阶段注入），
+ * Electron 回退返回 "0.0"，AppImageUpdater 构造直接抛出 "App version is not a valid semver version"，
+ * main 进程在加载阶段崩溃、窗口无法打开。macOS/Windows 回退到可执行文件版本号所以没有暴露。
+ *
+ * 修复：只在 canUseAutoUpdaterInCurrentRuntime() 放行后的路径里读取 updater，
+ * 未打包且未开启开发态更新验证时完全不构造 updater。getter 自身缓存单例，重复读取不会重复构造。
+ */
+function getAutoUpdater(): ElectronAutoUpdater {
+  return pkg.autoUpdater;
+}
 
 export const CHECK_FOR_UPDATE_MENU_ID = "check-for-update";
 const AUTO_UPDATE_POLL_INTERVAL_MS = 60 * 60 * 1000;
@@ -121,7 +138,7 @@ interface InitAutoUpdaterOptions {
 let quitAndInstallInFlight = false;
 let devAutoUpdateVersionOverride: string | null = null;
 
-type MutableAutoUpdaterForDev = typeof autoUpdater & {
+type MutableAutoUpdaterForDev = ElectronAutoUpdater & {
   currentVersion?: semver.SemVer;
   forceDevUpdateConfig?: boolean;
 };
@@ -184,7 +201,7 @@ function applyDevAutoUpdateRuntimeOverrides(): void {
 
   const devVersion = resolveDevAutoUpdateVersion();
   const parsedVersion = devVersion ? semver.parse(devVersion) : null;
-  const mutableAutoUpdater = autoUpdater as MutableAutoUpdaterForDev;
+  const mutableAutoUpdater = getAutoUpdater() as MutableAutoUpdaterForDev;
   mutableAutoUpdater.forceDevUpdateConfig = true;
   if (parsedVersion) {
     devAutoUpdateVersionOverride = parsedVersion.format();
@@ -467,7 +484,7 @@ async function quitAndInstallUpdate(rejectUnavailable = false) {
     // 3.3.0 的 Windows 自定义 PowerShell delayed launcher 在 detached/hidden
     // 模式下可能只创建 powershell.exe，却没有稳定执行到安装器启动，用户看到应用关闭但版本不变。
     // 这里恢复 electron-updater 原生安装入口，避免把“launcher 进程创建成功”误当成更新已接管。
-    autoUpdater.quitAndInstall();
+    getAutoUpdater().quitAndInstall();
   } finally {
     quitAndInstallInFlight = false;
   }
@@ -753,7 +770,7 @@ async function syncAutoUpdateCheckChannelFromSettings(
 
 function applyManifestUpdateProvider(options: InitAutoUpdaterOptions): void {
   const manifestUrl = options.updateFeedSource?.url.trim();
-  autoUpdater.setFeedURL({
+  getAutoUpdater().setFeedURL({
     provider: "custom",
     updateProvider: ManifestUpdateProvider,
     endpointOrigin: DEFAULT_ZCODE_ENDPOINT_ORIGIN,
@@ -1222,7 +1239,7 @@ function downloadAvailableUpdate(reason = "renderer") {
 
   const cancellationToken = new CancellationToken();
   downloadCancellationToken = cancellationToken;
-  void autoUpdater
+  void getAutoUpdater()
     .downloadUpdate(cancellationToken)
     .catch((error) => {
       if (isCancelledDownload(cancellationToken, error)) {
@@ -1389,7 +1406,7 @@ export function refreshAutoUpdaterReleaseChannel(
   clearAvailableUpdateState();
   setAutoUpdaterMenuState({ kind: "checking", enabled: false });
   const checkId = beginAutoUpdateCheck();
-  autoUpdater
+  getAutoUpdater()
     .checkForUpdates()
     .catch((err) => {
       logger.error(`[auto-update] ${reason} check failed:`, err);
@@ -1471,6 +1488,8 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
   }
   autoUpdaterDisabledForProductFlavor = false;
   if (!canUseAutoUpdaterInCurrentRuntime()) return;
+  // 运行时门禁通过后才构造 updater，开发态不会因 app 版本号非法在加载阶段崩溃。
+  const autoUpdater = getAutoUpdater();
 
   onBeforeQuitAndInstall = options.onBeforeQuitAndInstall;
   if (options.locale) {
@@ -1811,7 +1830,7 @@ export function requestForceAutoUpdate(
 
   const checkId = beginAutoUpdateCheck();
   setAutoUpdaterMenuState({ kind: "checking", enabled: false });
-  autoUpdater
+  getAutoUpdater()
     .checkForUpdates()
     .catch((err) => {
       const message = err instanceof Error ? err.message : String(err);
@@ -1909,7 +1928,7 @@ export function checkForUpdateMenuClick(originWindow?: BrowserWindow | null) {
   const checkId = beginAutoUpdateCheck();
   void (async () => {
     await clearSkippedUpdateVersionForManualCheck(manualCheckChannel, autoUpdaterSettingService);
-    await autoUpdater.checkForUpdates();
+    await getAutoUpdater().checkForUpdates();
   })()
     .catch((err) => {
       logger.error("[auto-update] manual check failed:", err);
