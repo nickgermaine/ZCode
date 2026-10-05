@@ -1148,7 +1148,7 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 
 - electron-updater@6.8.3 — MIT
 
-- electron@41.0.3 — MIT
+- electron@41.7.1 — MIT
 
 - embla-carousel-react@8.6.0 — MIT
 
@@ -14717,9 +14717,9 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 
 ### Notice 5154e165bd6c2cc0cfbcd8916498c7abab0497923bafcd5cb07673fe8480087d
 
-- electron@41.0.3: dist/LICENSE
+- electron@41.7.1: dist/LICENSE
 
-- electron@41.0.3: LICENSE
+- electron@41.7.1: LICENSE
 
 
 
@@ -14750,7 +14750,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### Notice 56a37896ff6edec2b75b41465b66dd768f2d294c315255164898ca3e685bbd30
 
-- electron@41.0.3: README.md (license section)
+- electron@41.7.1: README.md (license section)
 
 
 
